@@ -42,72 +42,80 @@ claim persistente. Essas substituições não exigem mover regras para o Next.js
 
 ## Sequência do checkout
 
+### Criação, idempotência e reserva
+
 ```mermaid
 sequenceDiagram
     autonumber
     actor Cliente
     participant Web as Next.js
-    participant API as Express
-    participant Service as OrderService
+    participant API as Express / OrderService
     participant DB as Prisma / SQLite
-    participant Processor as OrderProcessor
-    participant ERP as ErpGateway
 
     Cliente->>Web: Adiciona, edita ou remove itens do carrinho
-    Cliente->>Web: Seleciona Finalizar compra
-    Web->>API: POST /api/orders + Idempotency-Key + items[]
-    API->>API: Valida header, array, itens únicos e campos extras
-    API->>Service: create(items, key, requestId)
-    Service->>DB: Procura Idempotency-Key
+    Cliente->>Web: Finaliza a compra
+    Web->>API: POST /api/orders com chave e itens
+    API->>API: Valida header e body
+    API->>DB: Busca a Idempotency-Key
 
-    alt Chave existente e payload igual
-        DB-->>Service: Pedido existente
-        Service-->>API: Replay sem nova reserva e sem novo ERP
-        API-->>Web: 200 + Idempotency-Replayed: true
-    else Chave existente e payload diferente
-        DB-->>Service: Pedido com outro requestHash
-        Service-->>API: IDEMPOTENCY_CONFLICT
-        API-->>Web: 409
-    else Nova intenção
-        Service->>DB: Transação: ordena itens + updateMany de cada produto + Order/OrderItems
+    alt Mesma chave e mesmo carrinho
+        DB-->>API: Pedido existente
+        API-->>Web: 200 com replay idempotente
+    else Mesma chave e carrinho diferente
+        DB-->>API: Chave associada a outro conteúdo
+        API-->>Web: 409 IDEMPOTENCY_CONFLICT
+    else Nova chave
+        API->>DB: Reserva estoque e cria pedido em uma transação
 
-        alt Qualquer produto ausente ou sem estoque
-            DB-->>Service: Rollback de todas as reservas
-            Service-->>API: PRODUCT_NOT_FOUND ou INSUFFICIENT_STOCK
-            API-->>Web: 404 ou 409
-            Note over Web,DB: Carrinho preservado; nenhum pedido ou item parcial
-        else Carrinho inteiro reservado
-            DB-->>Service: Pedido PENDING com snapshots, subtotais e total
-            Service->>Processor: processOrder(orderId, requestId)
-            Processor->>DB: Incrementa processingAttempts e marca PROCESSING
-            Processor->>ERP: processOrder(pedido completo, contexto)
-
-            alt ERP confirma dentro da janela síncrona
-                ERP-->>Processor: SUCCESS + durationMs
-                Processor->>DB: Marca CONFIRMED
-                Processor-->>Service: Pedido confirmado
-                Service-->>API: CREATED
-                API-->>Web: 201
-                Web->>Web: Exibe resumo e limpa o carrinho
-                Web->>API: GET /api/products
-                API-->>Web: Estoque atualizado
-            else ERP continua após a janela síncrona
-                Service-->>API: ACCEPTED
-                API-->>Web: 202 + orderId + statusUrl
-                loop Até estado final ou limite do polling
-                    Web->>API: GET /api/orders/:id
-                    API->>DB: Consulta status
-                    DB-->>API: PROCESSING, CONFIRMED ou FAILED
-                    API-->>Web: 200 + status
-                end
-            else ERP retorna falha temporária
-                ERP-->>Processor: TEMPORARY_FAILURE + errorCode + durationMs
-                Processor->>DB: Mantém PROCESSING para retry
-                Service-->>API: ERP_TEMPORARILY_UNAVAILABLE
-                API-->>Web: 503 + orderId + statusUrl
-                Note over Web,API: Retry reutiliza a mesma Idempotency-Key
-            end
+        alt Falha em qualquer item
+            DB-->>API: Desfaz toda a transação
+            API-->>Web: 404 produto ou 409 estoque
+            Note over Web,DB: Carrinho preservado sem pedido parcial
+        else Todos os itens reservados
+            DB-->>API: Pedido PENDING com itens e total
         end
+    end
+```
+
+### Processamento e acompanhamento
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Web as Next.js
+    participant API as Express / OrderService
+    participant Processor as OrderProcessor
+    participant DB as Prisma / SQLite
+    participant ERP as ErpGateway
+
+    API->>Processor: Processa o pedido reservado
+    Processor->>DB: Inicia tentativa e marca PROCESSING
+    Processor->>ERP: Envia o pedido completo
+
+    alt ERP confirma dentro da janela
+        ERP-->>Processor: Sucesso
+        Processor->>DB: Marca CONFIRMED
+        Processor-->>API: Pedido confirmado
+        API-->>Web: 201 CONFIRMED
+        Web->>API: Atualiza o catálogo
+        API-->>Web: Estoque atualizado
+    else Processamento excede a janela
+        API-->>Web: 202 com orderId e statusUrl
+        Note over Processor,ERP: O processamento continua em segundo plano
+
+        loop Até estado final ou limite de tempo
+            Web->>API: Consulta GET /api/orders/:id
+            API->>DB: Consulta o status
+            DB-->>API: PROCESSING, CONFIRMED ou FAILED
+            API-->>Web: 200 com o status atual
+        end
+    else ERP retorna falha temporária
+        ERP-->>Processor: Falha temporária
+        Processor->>DB: Mantém PROCESSING para nova tentativa
+        Processor-->>API: Falha temporária
+        API-->>Web: 503 com orderId e statusUrl
+        Note over Web,API: Nova tentativa reutiliza a mesma Idempotency-Key
+        Note over Processor,DB: O worker retoma o pedido até confirmar ou falhar
     end
 ```
 
