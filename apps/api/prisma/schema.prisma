@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  CONFIRMED
+  FAILED
+  STOCK_REJECTED
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  description  String
+  priceInCents Int
+  stock        Int
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  orderItems   OrderItem[]
+
+  @@index([active, id])
+  @@index([active, name])
+}
+
+model Order {
+  id                 String      @id @default(cuid())
+  idempotencyKey     String      @unique
+  requestHash        String
+  totalPriceInCents  Int
+  status             OrderStatus @default(PENDING)
+  errorCode          String?
+  errorMessage       String?
+  processingAttempts Int         @default(0)
+  stockReleasedAt    DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  items              OrderItem[]
+  processingClaim    OrderProcessingClaim?
+
+  @@index([status, updatedAt])
+}
+
+model OrderItem {
+  id                  String   @id @default(cuid())
+  orderId             String
+  productId           String
+  productNameSnapshot String
+  unitPriceInCents    Int
+  quantity            Int
+  subtotalInCents     Int
+  createdAt           DateTime @default(now())
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  product             Product  @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([orderId, productId])
+  @@index([productId, createdAt])
+}
+
+model OrderProcessingClaim {
+  orderId    String   @id
+  token      String   @unique
+  leaseUntil DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([leaseUntil])
+}

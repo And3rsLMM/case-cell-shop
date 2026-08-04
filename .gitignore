@@ -1,0 +1,30 @@
+# Dependências
+node_modules/
+
+# Builds e cobertura
+dist/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Bancos SQLite locais
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editores e sistema operacional
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

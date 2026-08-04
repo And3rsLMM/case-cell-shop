@@ -1,0 +1,42 @@
+{
+  "name": "@case-cell-shop/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API Express da CaseCellShop.",
+  "main": "dist/server.js",
+  "scripts": {
+    "predev": "npm run prisma:setup",
+    "dev": "tsx watch src/server.ts",
+    "prebuild": "npm run prisma:generate",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "test": "jest --runInBand",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src tests prisma prisma.config.ts --ext .ts",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:seed": "prisma db seed --schema prisma/schema.prisma",
+    "prisma:setup": "npm run prisma:generate && npm run prisma:migrate:deploy && npm run prisma:seed"
+  },
+  "dependencies": {
+    "@case-cell-shop/contracts": "0.1.0",
+    "@prisma/client": "6.19.3",
+    "cors": "2.8.5",
+    "dotenv": "17.2.1",
+    "express": "5.1.0",
+    "express-validator": "7.3.2",
+    "swagger-ui-express": "5.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.3",
+    "@types/jest": "29.5.14",
+    "@types/node": "22.17.1",
+    "@types/swagger-ui-express": "4.1.8",
+    "jest": "29.7.0",
+    "prisma": "6.19.3",
+    "ts-jest": "29.4.1",
+    "tsx": "4.20.3"
+  }
+}
