@@ -119,7 +119,4 @@ sequenceDiagram
     end
 ```
 
-Cada resposta inclui `X-Request-Id`. O log HTTP concluído agrega o contexto
-allowlisted conhecido naquele ponto, como `orderId`, `productId` em rotas
-unitárias, `itemCount`, `status`, `durationMs`, `errorCode` e indicação de replay
-idempotente.
+Cada resposta inclui o header `X-Request-Id`, que permite localizar a requisição nos logs. Ao final do processamento, a API registra apenas informações úteis e previamente selecionadas, como `orderId`, `productId` na consulta de um produto, `itemCount`, `status`, `durationMs`, `errorCode` e se a resposta reutilizou um pedido existente. O conteúdo completo da requisição e dados sensíveis não são armazenados.
